@@ -29,6 +29,7 @@ async function getPublicKeys() {
 }
 
 export async function verifyToken(req, res, next) {
+    console.log("VERIFY TOKEN MIDDLEWARE HIT");
     try {
         const authHeader = req.headers.authorization;
 
