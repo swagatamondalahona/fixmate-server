@@ -6,16 +6,13 @@ import { ObjectId } from "mongodb";
 export const getAllServices = async (req, res) => {
     try {
         const db = getDB();
-
         const { search, category, mode, sort } = req.query;
 
-        // Only approved and available services
         const query = {
             approvalStatus: "approved",
             isAvailable: true,
         };
 
-        // Search by title or category
         if (search?.trim()) {
             const safeSearch = search.trim().replace(
                 /[.*+?^${}()|[\]\\]/g,
@@ -28,17 +25,14 @@ export const getAllServices = async (req, res) => {
             ];
         }
 
-        // Category filter
         if (category?.trim() && category !== "All Categories") {
             query.category = category.trim();
         }
 
-        // Service mode filter
         if (mode?.trim() && mode !== "All Modes") {
             query.serviceMode = mode.trim();
         }
 
-        // Sorting
         let sortOption = { createdAt: -1 };
 
         if (sort === "low-high") {
@@ -65,6 +59,47 @@ export const getAllServices = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to fetch services",
+        });
+    }
+};
+
+// Public: Get Single Approved and Available Service
+export const getServiceById = async (req, res) => {
+    try {
+        const db = getDB();
+        const { serviceId } = req.params;
+
+        if (!ObjectId.isValid(serviceId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid service ID",
+            });
+        }
+
+        const service = await db.collection("services").findOne({
+            _id: new ObjectId(serviceId),
+            approvalStatus: "approved",
+            isAvailable: true,
+        });
+
+        if (!service) {
+            return res.status(404).json({
+                success: false,
+                message: "Service not found",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Service fetched successfully",
+            data: service,
+        });
+    } catch (error) {
+        console.error("Get service by ID error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch service",
         });
     }
 };
