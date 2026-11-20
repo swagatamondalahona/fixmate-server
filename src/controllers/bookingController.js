@@ -226,3 +226,51 @@ export const updateBookingStatus = async (req, res) => {
         });
     }
 };
+
+// Customer: Cancel Own Booking
+export const cancelBooking = async (req, res) => {
+    try {
+        const db = getDB();
+        const { bookingId } = req.params;
+
+        if (!ObjectId.isValid(bookingId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid booking ID",
+            });
+        }
+
+        const result = await db.collection("bookings").updateOne(
+            {
+                _id: new ObjectId(bookingId),
+                customerId: req.user.id,
+                status: "requested",
+            },
+            {
+                $set: {
+                    status: "cancelled",
+                    updatedAt: new Date(),
+                },
+            }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Booking cannot be cancelled. It may not belong to you or is no longer pending.",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Booking cancelled successfully",
+        });
+    } catch (error) {
+        console.error("Cancel Booking Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to cancel booking",
+        });
+    }
+};

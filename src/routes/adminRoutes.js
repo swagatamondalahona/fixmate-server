@@ -2,38 +2,50 @@
 import express from "express";
 
 import {
-    getPendingServices,
-    approveService,
-    rejectService,
-} from "../controllers/serviceController.js";
+    createBooking,
+    getMyBookings,
+    getTechnicianBookings,
+    updateBookingStatus,
+    cancelBooking,
+} from "../controllers/bookingController.js";
 
 import { verifyToken } from "../middlewares/verifyToken.js";
-import { verifyAdmin } from "../middlewares/verifyRole.js";
+
+import {
+    verifyCustomer,
+    verifyTechnician,
+} from "../middlewares/verifyRole.js";
 
 const router = express.Router();
 
-// Admin: Get Pending Services
+// Customer: Create Booking
+router.post("/", verifyToken, verifyCustomer, createBooking);
+
+// Customer: Get Own Bookings
+router.get("/my-bookings", verifyToken, verifyCustomer, getMyBookings);
+
+// Customer: Cancel Own Booking
+router.patch(
+    "/:bookingId/cancel",
+    verifyToken,
+    verifyCustomer,
+    cancelBooking
+);
+
+// Technician: Get Assigned Bookings
 router.get(
-    "/services/pending",
+    "/technician",
     verifyToken,
-    verifyAdmin,
-    getPendingServices
+    verifyTechnician,
+    getTechnicianBookings
 );
 
-// Admin: Approve Pending Service
+// Technician: Update Booking Status
 router.patch(
-    "/services/:serviceId/approve",
+    "/:bookingId/status",
     verifyToken,
-    verifyAdmin,
-    approveService
-);
-
-// Admin: Reject Pending Service
-router.patch(
-    "/services/:serviceId/reject",
-    verifyToken,
-    verifyAdmin,
-    rejectService
+    verifyTechnician,
+    updateBookingStatus
 );
 
 export default router;
