@@ -2,50 +2,37 @@
 import express from "express";
 
 import {
-    createBooking,
-    getMyBookings,
-    getTechnicianBookings,
-    updateBookingStatus,
-    cancelBooking,
-} from "../controllers/bookingController.js";
-
-import { verifyToken } from "../middlewares/verifyToken.js";
+    getPendingServices,
+    approveService,
+    rejectService,
+} from "../controllers/serviceController.js";
 
 import {
-    verifyCustomer,
-    verifyTechnician,
-} from "../middlewares/verifyRole.js";
+    getAllUsers,
+    updateUserRole,
+} from "../controllers/userController.js";
+
+import { verifyToken } from "../middlewares/verifyToken.js";
+import { verifyAdmin } from "../middlewares/verifyRole.js";
 
 const router = express.Router();
 
-// Customer: Create Booking
-router.post("/", verifyToken, verifyCustomer, createBooking);
+// All Admin routes require authentication and Admin role
+router.use(verifyToken, verifyAdmin);
 
-// Customer: Get Own Bookings
-router.get("/my-bookings", verifyToken, verifyCustomer, getMyBookings);
+// Admin: Get Pending Services
+router.get("/services/pending", getPendingServices);
 
-// Customer: Cancel Own Booking
-router.patch(
-    "/:bookingId/cancel",
-    verifyToken,
-    verifyCustomer,
-    cancelBooking
-);
+// Admin: Approve Service
+router.patch("/services/:serviceId/approve", approveService);
 
-// Technician: Get Assigned Bookings
-router.get(
-    "/technician",
-    verifyToken,
-    verifyTechnician,
-    getTechnicianBookings
-);
+// Admin: Reject Service
+router.patch("/services/:serviceId/reject", rejectService);
 
-// Technician: Update Booking Status
-router.patch(
-    "/:bookingId/status",
-    verifyToken,
-    verifyTechnician,
-    updateBookingStatus
-);
+// Admin: Get All Users
+router.get("/users", getAllUsers);
+
+// Admin: Update User Role
+router.patch("/users/:userId/role", updateUserRole);
 
 export default router;

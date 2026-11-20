@@ -12,12 +12,8 @@ import { verifyCustomer } from "../middlewares/verifyRole.js";
 const router = express.Router();
 
 // Stripe Webhook
-// Must receive raw request body; configure express.raw() in server.js
-router.post(
-    "/webhook",
-    express.raw({ type: "application/json" }),
-    handleStripeWebhook
-);
+// Raw body is configured in server.js before express.json().
+router.post("/webhook", handleStripeWebhook);
 
 // Customer: Create Stripe Checkout Session
 router.post(

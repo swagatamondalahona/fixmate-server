@@ -26,6 +26,7 @@ app.use((req, res, next) => {
         req.originalUrl,
         req.headers.origin
     );
+
     const origin = req.headers.origin;
 
     if (origin && allowedOrigins.includes(origin)) {
@@ -52,6 +53,7 @@ app.use((req, res, next) => {
 });
 
 // Stripe Webhook Raw Body
+// This MUST be before express.json().
 app.use(
     "/api/payments/webhook",
     express.raw({ type: "application/json" })
@@ -62,7 +64,6 @@ app.use(express.json());
 
 // API Routes
 app.use("/api/services", serviceRoutes);
-
 app.use("/api/admin", adminRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/payments", paymentRoutes);

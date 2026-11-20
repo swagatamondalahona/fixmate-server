@@ -7,7 +7,6 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export const createCheckoutSession = async (req, res) => {
     try {
         const db = getDB();
-
         const { bookingId } = req.body;
 
         if (!bookingId || !ObjectId.isValid(bookingId)) {
@@ -63,27 +62,32 @@ export const createCheckoutSession = async (req, res) => {
         const formData = new URLSearchParams();
 
         formData.append("mode", "payment");
+
         formData.append(
             "success_url",
-            `${frontendURL}/dashboard/customer/bookings?payment=success`
+            `${frontendURL}/dashboard/customer?payment=success`
         );
+
         formData.append(
             "cancel_url",
-            `${frontendURL}/dashboard/customer/bookings?payment=cancelled`
+            `${frontendURL}/dashboard/customer?payment=cancelled`
         );
 
         formData.append(
             "line_items[0][price_data][currency]",
             currency
         );
+
         formData.append(
             "line_items[0][price_data][product_data][name]",
-            booking.serviceTitle
+            booking.serviceTitle || "FixMate Service"
         );
+
         formData.append(
             "line_items[0][price_data][unit_amount]",
             String(Math.round(amount * 100))
         );
+
         formData.append("line_items[0][quantity]", "1");
 
         formData.append("client_reference_id", bookingId);
@@ -113,7 +117,7 @@ export const createCheckoutSession = async (req, res) => {
             });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Checkout session created successfully",
             data: {
@@ -124,7 +128,7 @@ export const createCheckoutSession = async (req, res) => {
     } catch (error) {
         console.error("Create Checkout Session Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Failed to create checkout session",
         });
@@ -140,15 +144,32 @@ const verifyStripeSignature = (rawBody, signature) => {
     }
 
     const signatureParts = signature.split(",");
-    const timestamp = signatureParts
+
+    const timestampValue = signatureParts
         .find((part) => part.startsWith("t="))
         ?.slice(2);
+
+    const timestamp = Number(timestampValue);
+
+    if (
+        !Number.isFinite(timestamp) ||
+        !Number.isInteger(timestamp)
+    ) {
+        return false;
+    }
+
+    // Reject webhook signatures older than 5 minutes.
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+
+    if (Math.abs(currentTimestamp - timestamp) > 300) {
+        return false;
+    }
 
     const signatures = signatureParts
         .filter((part) => part.startsWith("v1="))
         .map((part) => part.slice(3));
 
-    if (!timestamp || signatures.length === 0) {
+    if (signatures.length === 0) {
         return false;
     }
 
@@ -156,15 +177,21 @@ const verifyStripeSignature = (rawBody, signature) => {
 
     const expectedSignature = createHmac("sha256", secret)
         .update(signedPayload)
-        .digest("hex");
+        .digest();
 
     return signatures.some((signatureValue) => {
-        const expected = Buffer.from(expectedSignature, "hex");
-        const received = Buffer.from(signatureValue, "hex");
+        if (!/^[a-f0-9]{64}$/i.test(signatureValue)) {
+            return false;
+        }
+
+        const receivedSignature = Buffer.from(
+            signatureValue,
+            "hex"
+        );
 
         return (
-            expected.length === received.length &&
-            timingSafeEqual(expected, received)
+            expectedSignature.length === receivedSignature.length &&
+            timingSafeEqual(expectedSignature, receivedSignature)
         );
     });
 };
@@ -183,88 +210,125 @@ export const handleStripeWebhook = async (req, res) => {
 
         const event = JSON.parse(req.body.toString("utf8"));
 
-        if (event.type === "checkout.session.completed") {
-            const session = event.data.object;
+        if (event.type !== "checkout.session.completed") {
+            return res.status(200).json({
+                received: true,
+            });
+        }
 
-            if (session.payment_status !== "paid") {
-                return res.status(200).json({
-                    received: true,
-                    message: "Payment is not completed",
-                });
-            }
+        const session = event.data.object;
 
-            const db = getDB();
+        if (session.payment_status !== "paid") {
+            return res.status(200).json({
+                received: true,
+                message: "Payment is not completed",
+            });
+        }
 
-            const bookingId = session.metadata?.bookingId;
-            const customerId = session.metadata?.customerId;
+        const bookingId = session.metadata?.bookingId;
+        const customerId = session.metadata?.customerId;
 
-            if (
-                !bookingId ||
-                !ObjectId.isValid(bookingId) ||
-                !customerId
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid booking metadata",
-                });
-            }
+        if (
+            !bookingId ||
+            !ObjectId.isValid(bookingId) ||
+            !customerId
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid booking metadata",
+            });
+        }
 
-            const booking = await db.collection("bookings").findOne({
-                _id: new ObjectId(bookingId),
+        const db = getDB();
+
+        const booking = await db.collection("bookings").findOne({
+            _id: new ObjectId(bookingId),
+            customerId,
+            status: "completed",
+            paymentStatus: "unpaid",
+        });
+
+        if (!booking) {
+            return res.status(200).json({
+                received: true,
+                message: "Booking already processed or not eligible",
+            });
+        }
+
+        const expectedAmount = Math.round(
+            Number(booking.finalAmount) * 100
+        );
+
+        if (
+            !Number.isFinite(expectedAmount) ||
+            expectedAmount <= 0 ||
+            session.amount_total !== expectedAmount
+        ) {
+            console.error("Stripe payment amount mismatch:", {
+                bookingId,
+                expectedAmount,
+                receivedAmount: session.amount_total,
+            });
+
+            return res.status(400).json({
+                success: false,
+                message: "Payment amount does not match booking amount",
+            });
+        }
+
+        const expectedCurrency = (
+            process.env.STRIPE_CURRENCY || "usd"
+        ).toLowerCase();
+
+        if (session.currency !== expectedCurrency) {
+            return res.status(400).json({
+                success: false,
+                message: "Payment currency does not match",
+            });
+        }
+
+        const payment = {
+            bookingId: booking._id,
+            customerId,
+            stripeSessionId: session.id,
+            stripePaymentIntent: session.payment_intent || null,
+            amount: session.amount_total / 100,
+            currency: session.currency,
+            status: "paid",
+            createdAt: new Date(),
+        };
+
+        // Prevent duplicate payment records for the same Stripe session.
+        await db.collection("payments").updateOne(
+            { stripeSessionId: session.id },
+            { $setOnInsert: payment },
+            { upsert: true }
+        );
+
+        // Only change an eligible unpaid booking to paid.
+        await db.collection("bookings").updateOne(
+            {
+                _id: booking._id,
                 customerId,
                 status: "completed",
                 paymentStatus: "unpaid",
-            });
-
-            if (!booking) {
-                // Already processed or not an eligible booking.
-                return res.status(200).json({
-                    received: true,
-                    message: "Booking already processed or not eligible",
-                });
-            }
-
-            const payment = {
-                bookingId: booking._id,
-                customerId,
-                stripeSessionId: session.id,
-                stripePaymentIntent: session.payment_intent || null,
-                amount: session.amount_total / 100,
-                currency: session.currency,
-                status: "paid",
-                createdAt: new Date(),
-            };
-
-            // Prevent duplicate payment records for the same booking.
-            await db.collection("payments").updateOne(
-                { stripeSessionId: session.id },
-                { $setOnInsert: payment },
-                { upsert: true }
-            );
-
-            // Only one webhook can change an unpaid booking to paid.
-            await db.collection("bookings").updateOne(
-                {
-                    _id: booking._id,
-                    customerId,
-                    status: "completed",
-                    paymentStatus: "unpaid",
+            },
+            {
+                $set: {
+                    paymentStatus: "paid",
+                    paidAt: new Date(),
+                    updatedAt: new Date(),
                 },
-                {
-                    $set: {
-                        paymentStatus: "paid",
-                        paidAt: new Date(),
-                        updatedAt: new Date(),
-                    },
-                }
-            );
-        }
+            }
+        );
 
-        res.status(200).json({ received: true });
+        return res.status(200).json({
+            received: true,
+        });
     } catch (error) {
         console.error("Stripe Webhook Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Webhook processing failed",
         });
