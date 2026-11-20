@@ -12,6 +12,10 @@ import {
 } from "../controllers/adminServiceController.js";
 
 import {
+    getAllAdminBookings,
+} from "../controllers/adminBookingController.js";
+
+import {
     getAllUsers,
     updateUserRole,
 } from "../controllers/userController.js";
@@ -24,22 +28,17 @@ const router = express.Router();
 // All Admin routes require authentication and Admin role
 router.use(verifyToken, verifyAdmin);
 
-// Admin: Get All Services
+// Admin: Manage Services
 router.get("/services", getAllAdminServices);
-
-// Admin: Get Pending Services
 router.get("/services/pending", getPendingServices);
-
-// Admin: Approve Service
 router.patch("/services/:serviceId/approve", approveService);
-
-// Admin: Reject Service
 router.patch("/services/:serviceId/reject", rejectService);
 
-// Admin: Get All Users
+// Admin: Manage Users
 router.get("/users", getAllUsers);
-
-// Admin: Update User Role
 router.patch("/users/:userId/role", updateUserRole);
+
+// Admin: Manage Bookings
+router.get("/bookings", getAllAdminBookings);
 
 export default router;
