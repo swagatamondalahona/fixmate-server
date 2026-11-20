@@ -1,8 +1,14 @@
 
 import { createPublicKey, verify } from "node:crypto";
 
-const JWKS_URL = "http://localhost:3000/api/auth/jwks";
-const ISSUER = "http://localhost:3000";
+const AUTH_URL = (
+    process.env.BETTER_AUTH_URL ||
+    process.env.FRONTEND_URL ||
+    "http://localhost:3000"
+).replace(/\/$/, "");
+
+const JWKS_URL = `${AUTH_URL}/api/auth/jwks`;
+const ISSUER = AUTH_URL;
 
 let cachedKeys = [];
 let keysFetchedAt = 0;
@@ -29,7 +35,6 @@ async function getPublicKeys() {
 }
 
 export async function verifyToken(req, res, next) {
-    console.log("VERIFY TOKEN MIDDLEWARE HIT");
     try {
         const authHeader = req.headers.authorization;
 
@@ -60,13 +65,29 @@ export async function verifyToken(req, res, next) {
             Buffer.from(payloadPart, "base64url").toString()
         );
 
+        const currentTime = Math.floor(Date.now() / 1000);
+
+        console.log("JWT CLAIM CHECK:", {
+            algorithm: header.alg,
+            issuer: payload.iss,
+            expectedIssuer: ISSUER,
+            hasSubject: Boolean(payload.sub),
+            expiresAt: payload.exp,
+            notBefore: payload.nbf,
+            currentTime,
+            isExpired: payload.exp ? payload.exp <= currentTime : true,
+            isNotYetValid: payload.nbf
+                ? payload.nbf > currentTime
+                : false,
+        });
+
         if (
             header.alg !== "EdDSA" ||
             !payload.sub ||
             payload.iss !== ISSUER ||
             !payload.exp ||
-            payload.exp <= Math.floor(Date.now() / 1000) ||
-            (payload.nbf && payload.nbf > Math.floor(Date.now() / 1000))
+            payload.exp <= currentTime ||
+            (payload.nbf && payload.nbf > currentTime)
         ) {
             return res.status(401).json({
                 success: false,
@@ -74,7 +95,13 @@ export async function verifyToken(req, res, next) {
             });
         }
 
+        console.log("JWT CLAIMS PASSED - Checking signature...");
+
         const keys = await getPublicKeys();
+
+        console.log("JWKS KEYS:", keys.length);
+        console.log("JWT KEY ID:", header.kid);
+
         const jwk = keys.find((key) => key.kid === header.kid);
 
         if (!jwk) {
@@ -96,6 +123,8 @@ export async function verifyToken(req, res, next) {
             Buffer.from(signaturePart, "base64url")
         );
 
+        console.log("JWT SIGNATURE VALID:", isValid);
+
         if (!isValid) {
             return res.status(401).json({
                 success: false,
@@ -108,7 +137,8 @@ export async function verifyToken(req, res, next) {
             email: payload.email,
         };
 
-        next();
+        return next();
+
     } catch (error) {
         console.error("JWT verification error:", error.message);
 
