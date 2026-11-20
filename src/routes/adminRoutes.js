@@ -8,6 +8,10 @@ import {
 } from "../controllers/serviceController.js";
 
 import {
+    getAllAdminServices,
+} from "../controllers/adminServiceController.js";
+
+import {
     getAllUsers,
     updateUserRole,
 } from "../controllers/userController.js";
@@ -19,6 +23,9 @@ const router = express.Router();
 
 // All Admin routes require authentication and Admin role
 router.use(verifyToken, verifyAdmin);
+
+// Admin: Get All Services
+router.get("/services", getAllAdminServices);
 
 // Admin: Get Pending Services
 router.get("/services/pending", getPendingServices);
