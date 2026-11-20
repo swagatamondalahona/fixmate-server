@@ -16,6 +16,10 @@ import {
 } from "../controllers/adminBookingController.js";
 
 import {
+    getAllAdminTransactions,
+} from "../controllers/adminPaymentController.js";
+
+import {
     getAllUsers,
     updateUserRole,
 } from "../controllers/userController.js";
@@ -40,5 +44,8 @@ router.patch("/users/:userId/role", updateUserRole);
 
 // Admin: Manage Bookings
 router.get("/bookings", getAllAdminBookings);
+
+// Admin: Manage Transactions
+router.get("/transactions", getAllAdminTransactions);
 
 export default router;
