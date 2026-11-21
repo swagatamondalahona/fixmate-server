@@ -2,6 +2,46 @@
 import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 
+// Helper: Find technician by ID or email
+const findTechnician = async (db, service) => {
+    const conditions = [];
+
+    if (service.technicianId) {
+        conditions.push(
+            { _id: service.technicianId },
+            { id: service.technicianId }
+        );
+
+        if (ObjectId.isValid(service.technicianId)) {
+            conditions.push({
+                _id: new ObjectId(service.technicianId),
+            });
+        }
+    }
+
+    if (service.technicianEmail) {
+        conditions.push({
+            email: service.technicianEmail,
+        });
+    }
+
+    if (conditions.length === 0) return null;
+
+    return db.collection("users").findOne({
+        $or: conditions,
+    });
+};
+
+// Helper: Get technician name
+const getTechnicianName = (technician) => {
+    return (
+        technician?.name?.trim() ||
+        technician?.fullName?.trim() ||
+        technician?.displayName?.trim() ||
+        ""
+    );
+};
+
 // Public: Get All Approved and Available Services
 export const getAllServices = async (req, res) => {
     try {
@@ -88,10 +128,18 @@ export const getServiceById = async (req, res) => {
             });
         }
 
+        const technician = await findTechnician(db, service);
+
         return res.status(200).json({
             success: true,
             message: "Service fetched successfully",
-            data: service,
+            data: {
+                ...service,
+                technicianName:
+                    service.technicianName?.trim() ||
+                    getTechnicianName(technician) ||
+                    "Verified Technician",
+            },
         });
     } catch (error) {
         console.error("Get service by ID error:", error);
@@ -118,10 +166,24 @@ export const getFeaturedServices = async (req, res) => {
             .limit(6)
             .toArray();
 
+        const updatedServices = await Promise.all(
+            services.map(async (service) => {
+                const technician = await findTechnician(db, service);
+
+                return {
+                    ...service,
+                    technicianName:
+                        service.technicianName?.trim() ||
+                        getTechnicianName(technician) ||
+                        "Verified Technician",
+                };
+            })
+        );
+
         return res.status(200).json({
             success: true,
             message: "Featured services fetched successfully",
-            data: services,
+            data: updatedServices,
         });
     } catch (error) {
         console.error("Featured services error:", error);
@@ -209,6 +271,9 @@ export const createService = async (req, res) => {
             });
         }
 
+        const technicianName =
+            getTechnicianName(technician);
+
         const service = {
             title: title.trim(),
             description: description.trim(),
@@ -219,7 +284,7 @@ export const createService = async (req, res) => {
             estimatedDuration: estimatedDuration.trim(),
             serviceArea: serviceArea.trim(),
             technicianId: req.user.id,
-            technicianName: technician.name || "",
+            technicianName,
             technicianEmail: technician.email || req.user.email || "",
             approvalStatus: "pending",
             isAvailable: true,
