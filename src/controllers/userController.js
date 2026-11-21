@@ -2,18 +2,35 @@
 import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 
+// Find the logged-in user using BetterAuth ID or email.
+const getLoggedInUserQuery = (user) => {
+    const conditions = [
+        { _id: user.id },
+        { id: user.id },
+    ];
+
+    if (ObjectId.isValid(user.id)) {
+        conditions.push({
+            _id: new ObjectId(user.id),
+        });
+    }
+
+    if (user.email) {
+        conditions.push({
+            email: user.email,
+        });
+    }
+
+    return { $or: conditions };
+};
+
 // Get Logged-in User Profile
 export const getMyProfile = async (req, res) => {
     try {
         const db = getDB();
 
         const user = await db.collection("users").findOne(
-            {
-                $or: [
-                    { _id: req.user.id },
-                    { id: req.user.id },
-                ],
-            },
+            getLoggedInUserQuery(req.user),
             {
                 projection: { password: 0 },
             }
@@ -47,6 +64,7 @@ export const updateMyProfile = async (req, res) => {
         const db = getDB();
         const { name, image, phone, area, bio } = req.body;
 
+        const userQuery = getLoggedInUserQuery(req.user);
         const allowedUpdates = {};
 
         if (typeof name === "string" && name.trim()) {
@@ -79,12 +97,7 @@ export const updateMyProfile = async (req, res) => {
         allowedUpdates.updatedAt = new Date();
 
         const result = await db.collection("users").updateOne(
-            {
-                $or: [
-                    { _id: req.user.id },
-                    { id: req.user.id },
-                ],
-            },
+            userQuery,
             { $set: allowedUpdates }
         );
 
@@ -96,12 +109,7 @@ export const updateMyProfile = async (req, res) => {
         }
 
         const updatedUser = await db.collection("users").findOne(
-            {
-                $or: [
-                    { _id: req.user.id },
-                    { id: req.user.id },
-                ],
-            },
+            userQuery,
             {
                 projection: { password: 0 },
             }
@@ -116,7 +124,7 @@ export const updateMyProfile = async (req, res) => {
         console.error("Update Profile Error:", error);
 
         return res.status(500).json({
-            success: true,
+            success: false,
             message: "Failed to update profile",
         });
     }

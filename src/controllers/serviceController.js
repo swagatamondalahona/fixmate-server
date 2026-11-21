@@ -14,10 +14,9 @@ export const getAllServices = async (req, res) => {
         };
 
         if (search?.trim()) {
-            const safeSearch = search.trim().replace(
-                /[.*+?^${}()|[\]\\]/g,
-                "\\$&"
-            );
+            const safeSearch = search
+                .trim()
+                .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
             query.$or = [
                 { title: { $regex: safeSearch, $options: "i" } },
@@ -146,6 +145,8 @@ export const createService = async (req, res) => {
             serviceMode,
             basePrice,
             image,
+            estimatedDuration,
+            serviceArea,
         } = req.body;
 
         if (
@@ -153,13 +154,16 @@ export const createService = async (req, res) => {
             !description?.trim() ||
             !category?.trim() ||
             !serviceMode?.trim() ||
+            !estimatedDuration?.trim() ||
+            !serviceArea?.trim() ||
             basePrice === undefined ||
             !Number.isFinite(Number(basePrice)) ||
-            Number(basePrice) < 0
+            Number(basePrice) < 0 ||
+            !image?.trim()
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Please provide valid service information",
+                message: "Please provide all required service information",
             });
         }
 
@@ -170,15 +174,53 @@ export const createService = async (req, res) => {
             });
         }
 
+        const userConditions = [
+            { _id: req.user.id },
+            { id: req.user.id },
+        ];
+
+        if (ObjectId.isValid(req.user.id)) {
+            userConditions.push({
+                _id: new ObjectId(req.user.id),
+            });
+        }
+
+        if (req.user.email) {
+            userConditions.push({
+                email: req.user.email,
+            });
+        }
+
+        const technician = await db.collection("users").findOne({
+            $or: userConditions,
+        });
+
+        if (!technician) {
+            return res.status(404).json({
+                success: false,
+                message: "Technician profile not found",
+            });
+        }
+
+        if (technician.role !== "technician") {
+            return res.status(403).json({
+                success: false,
+                message: "Only technicians can create services",
+            });
+        }
+
         const service = {
             title: title.trim(),
             description: description.trim(),
             category: category.trim(),
             serviceMode: serviceMode.trim(),
             basePrice: Number(basePrice),
-            image: image || "",
+            image: image.trim(),
+            estimatedDuration: estimatedDuration.trim(),
+            serviceArea: serviceArea.trim(),
             technicianId: req.user.id,
-            technicianEmail: req.user.email || "",
+            technicianName: technician.name || "",
+            technicianEmail: technician.email || req.user.email || "",
             approvalStatus: "pending",
             isAvailable: true,
             createdAt: new Date(),
@@ -203,6 +245,42 @@ export const createService = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to create service",
+        });
+    }
+};
+
+// Technician: Get Own Services
+export const getMyServices = async (req, res) => {
+    try {
+        const db = getDB();
+
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        const services = await db
+            .collection("services")
+            .find({
+                technicianId: req.user.id,
+            })
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        return res.status(200).json({
+            success: true,
+            message: "My services fetched successfully",
+            total: services.length,
+            data: services,
+        });
+    } catch (error) {
+        console.error("Get my services error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch your services",
         });
     }
 };
