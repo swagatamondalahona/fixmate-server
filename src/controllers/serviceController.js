@@ -380,14 +380,14 @@ export const updateService = async (req, res) => {
             serviceArea,
         } = req.body;
 
+        // Only these five fields are required.
         if (
             !title?.trim() ||
             !description?.trim() ||
             !category?.trim() ||
             !serviceMode?.trim() ||
-            !estimatedDuration?.trim() ||
-            !serviceArea?.trim() ||
             basePrice === undefined ||
+            basePrice === null ||
             !Number.isFinite(Number(basePrice)) ||
             Number(basePrice) < 0
         ) {
@@ -397,14 +397,21 @@ export const updateService = async (req, res) => {
             });
         }
 
+        // Duration and service area are optional.
         const updateData = {
             title: title.trim(),
             description: description.trim(),
             category: category.trim(),
             serviceMode: serviceMode.trim(),
             basePrice: Number(basePrice),
-            estimatedDuration: estimatedDuration.trim(),
-            serviceArea: serviceArea.trim(),
+            estimatedDuration:
+                typeof estimatedDuration === "string"
+                    ? estimatedDuration.trim()
+                    : "",
+            serviceArea:
+                typeof serviceArea === "string"
+                    ? serviceArea.trim()
+                    : "",
             approvalStatus: "pending",
             updatedAt: new Date(),
         };
