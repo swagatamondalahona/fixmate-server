@@ -40,9 +40,6 @@ router.get(
     verifyCustomer,
     getMyPayments
 );
-console.log(
-    "PAYMENT ROUTES:",
-    router.stack.map((layer) => layer.route?.path).filter(Boolean)
-);
+
 
 export default router;

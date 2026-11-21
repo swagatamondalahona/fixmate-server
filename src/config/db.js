@@ -29,7 +29,28 @@ export async function connectDB() {
 
         db = client.db(process.env.DB_NAME || "fixmateDB");
 
+        // Payment duplicate protection
+        await db.collection("payments").createIndexes([
+            {
+                key: { bookingId: 1 },
+                name: "unique_payment_booking",
+                unique: true,
+                partialFilterExpression: {
+                    bookingId: { $exists: true },
+                },
+            },
+            {
+                key: { stripeSessionId: 1 },
+                name: "unique_stripe_session",
+                unique: true,
+                partialFilterExpression: {
+                    stripeSessionId: { $exists: true },
+                },
+            },
+        ]);
+
         console.log("MongoDB Connected Successfully!");
+        console.log("Payment Unique Indexes Created Successfully!");
 
         return db;
     } catch (error) {

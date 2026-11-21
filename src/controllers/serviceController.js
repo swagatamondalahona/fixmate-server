@@ -190,7 +190,7 @@ export const getFeaturedServices = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: "Failed to fetch featured services",
+            message: "Failed to fetch services",
         });
     }
 };
@@ -271,8 +271,7 @@ export const createService = async (req, res) => {
             });
         }
 
-        const technicianName =
-            getTechnicianName(technician);
+        const technicianName = getTechnicianName(technician);
 
         const service = {
             title: title.trim(),
@@ -346,6 +345,178 @@ export const getMyServices = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to fetch your services",
+        });
+    }
+};
+
+// Technician: Update Own Service
+export const updateService = async (req, res) => {
+    try {
+        const db = getDB();
+        const { serviceId } = req.params;
+
+        if (!ObjectId.isValid(serviceId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid service ID",
+            });
+        }
+
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        const {
+            title,
+            description,
+            category,
+            serviceMode,
+            basePrice,
+            image,
+            estimatedDuration,
+            serviceArea,
+        } = req.body;
+
+        if (
+            !title?.trim() ||
+            !description?.trim() ||
+            !category?.trim() ||
+            !serviceMode?.trim() ||
+            !estimatedDuration?.trim() ||
+            !serviceArea?.trim() ||
+            basePrice === undefined ||
+            !Number.isFinite(Number(basePrice)) ||
+            Number(basePrice) < 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide all required service information",
+            });
+        }
+
+        const updateData = {
+            title: title.trim(),
+            description: description.trim(),
+            category: category.trim(),
+            serviceMode: serviceMode.trim(),
+            basePrice: Number(basePrice),
+            estimatedDuration: estimatedDuration.trim(),
+            serviceArea: serviceArea.trim(),
+            approvalStatus: "pending",
+            updatedAt: new Date(),
+        };
+
+        // Keep the existing image if no new image was uploaded.
+        if (typeof image === "string" && image.trim()) {
+            updateData.image = image.trim();
+        }
+
+        const result = await db.collection("services").updateOne(
+            {
+                _id: new ObjectId(serviceId),
+                technicianId: req.user.id,
+            },
+            {
+                $set: updateData,
+            }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Service not found or you do not have permission",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Service updated and submitted for admin approval",
+        });
+    } catch (error) {
+        console.error("Update service error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update service",
+        });
+    }
+};
+
+// Technician: Delete Own Service
+export const deleteService = async (req, res) => {
+    try {
+        const db = getDB();
+        const { serviceId } = req.params;
+
+        if (!ObjectId.isValid(serviceId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid service ID",
+            });
+        }
+
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        // Check service ownership.
+        const service = await db.collection("services").findOne({
+            _id: new ObjectId(serviceId),
+            technicianId: req.user.id,
+        });
+
+        if (!service) {
+            return res.status(404).json({
+                success: false,
+                message: "Service not found or you do not have permission",
+            });
+        }
+
+        // Preserve services that have booking history.
+        const existingBooking = await db.collection("bookings").findOne({
+            serviceId: {
+                $in: [
+                    new ObjectId(serviceId),
+                    serviceId,
+                ],
+            },
+        });
+
+        if (existingBooking) {
+            return res.status(409).json({
+                success: false,
+                message: "This service cannot be deleted because it has booking history",
+            });
+        }
+
+        const result = await db.collection("services").deleteOne({
+            _id: new ObjectId(serviceId),
+            technicianId: req.user.id,
+        });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Service could not be deleted",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Service deleted successfully",
+        });
+    } catch (error) {
+        console.error("Delete service error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete service",
         });
     }
 };
