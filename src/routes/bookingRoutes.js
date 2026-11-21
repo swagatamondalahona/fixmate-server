@@ -6,9 +6,11 @@ import {
     getMyBookings,
     getTechnicianBookings,
     updateBookingStatus,
+    cancelBooking,
 } from "../controllers/bookingController.js";
 
 import { verifyToken } from "../middlewares/verifyToken.js";
+
 import {
     verifyCustomer,
     verifyTechnician,
@@ -20,7 +22,20 @@ const router = express.Router();
 router.post("/", verifyToken, verifyCustomer, createBooking);
 
 // Customer: Get Own Bookings
-router.get("/my-bookings", verifyToken, verifyCustomer, getMyBookings);
+router.get(
+    "/my-bookings",
+    verifyToken,
+    verifyCustomer,
+    getMyBookings
+);
+
+// Customer: Cancel Own Requested Booking
+router.patch(
+    "/:bookingId/cancel",
+    verifyToken,
+    verifyCustomer,
+    cancelBooking
+);
 
 // Technician: Get Assigned Bookings
 router.get(
