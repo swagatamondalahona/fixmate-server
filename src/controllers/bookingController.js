@@ -9,6 +9,7 @@ export const createBooking = async (req, res) => {
 
         const { serviceId, bookingDate, address, notes } = req.body;
 
+        // Validate required fields
         if (
             !serviceId ||
             !ObjectId.isValid(serviceId) ||
@@ -21,6 +22,20 @@ export const createBooking = async (req, res) => {
             });
         }
 
+        // Validate future booking date
+        const selectedDate = new Date(bookingDate);
+
+        if (
+            Number.isNaN(selectedDate.getTime()) ||
+            selectedDate <= new Date()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Please select a valid future booking date",
+            });
+        }
+
+        // Find approved and available service
         const service = await db.collection("services").findOne({
             _id: new ObjectId(serviceId),
             approvalStatus: "approved",
@@ -34,17 +49,52 @@ export const createBooking = async (req, res) => {
             });
         }
 
+        // Prevent technicians from booking their own services
+        const isOwnService =
+            service.technicianId === req.user.id ||
+            (
+                service.technicianEmail &&
+                req.user.email &&
+                service.technicianEmail.toLowerCase() ===
+                req.user.email.toLowerCase()
+            );
+
+        if (isOwnService) {
+            return res.status(403).json({
+                success: false,
+                message: "You cannot book your own service",
+            });
+        }
+
+        // Prevent duplicate active bookings
+        const existingBooking = await db.collection("bookings").findOne({
+            serviceId: service._id,
+            customerId: req.user.id,
+            status: {
+                $in: ["requested", "accepted", "in-progress"],
+            },
+        });
+
+        if (existingBooking) {
+            return res.status(409).json({
+                success: false,
+                message: "You already have an active booking for this service",
+            });
+        }
+
+        // Create booking
         const booking = {
             serviceId: service._id,
             serviceTitle: service.title,
             serviceImage: service.image || "",
+
             technicianId: service.technicianId,
             technicianEmail: service.technicianEmail || "",
 
             customerId: req.user.id,
             customerEmail: req.user.email || "",
 
-            bookingDate: new Date(bookingDate),
+            bookingDate: selectedDate,
             address: address.trim(),
             notes: notes || "",
 
@@ -58,16 +108,9 @@ export const createBooking = async (req, res) => {
             updatedAt: new Date(),
         };
 
-        if (Number.isNaN(booking.bookingDate.getTime())) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid booking date",
-            });
-        }
-
         const result = await db.collection("bookings").insertOne(booking);
 
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
             message: "Booking created successfully",
             data: {
@@ -78,7 +121,7 @@ export const createBooking = async (req, res) => {
     } catch (error) {
         console.error("Create Booking Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Failed to create booking",
         });
@@ -92,11 +135,13 @@ export const getMyBookings = async (req, res) => {
 
         const bookings = await db
             .collection("bookings")
-            .find({ customerId: req.user.id })
+            .find({
+                customerId: req.user.id,
+            })
             .sort({ createdAt: -1 })
             .toArray();
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Bookings fetched successfully",
             data: bookings,
@@ -104,25 +149,27 @@ export const getMyBookings = async (req, res) => {
     } catch (error) {
         console.error("Get Customer Bookings Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Failed to fetch bookings",
         });
     }
 };
 
-// Technician: Get Assigned Bookings
+// Technician: Get Own Booking Requests
 export const getTechnicianBookings = async (req, res) => {
     try {
         const db = getDB();
 
         const bookings = await db
             .collection("bookings")
-            .find({ technicianId: req.user.id })
+            .find({
+                technicianId: req.user.id,
+            })
             .sort({ createdAt: -1 })
             .toArray();
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Technician bookings fetched successfully",
             data: bookings,
@@ -130,7 +177,7 @@ export const getTechnicianBookings = async (req, res) => {
     } catch (error) {
         console.error("Get Technician Bookings Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Failed to fetch technician bookings",
         });
@@ -160,20 +207,23 @@ export const updateBookingStatus = async (req, res) => {
         if (!booking) {
             return res.status(404).json({
                 success: false,
-                message: "Booking not found",
+                message: "Booking not found or access denied",
             });
         }
 
+        // Allowed status transitions
         const allowedTransitions = {
             requested: ["accepted", "rejected"],
             accepted: ["in-progress"],
             "in-progress": ["completed"],
         };
 
-        if (!allowedTransitions[booking.status]?.includes(status)) {
+        const allowedStatuses = allowedTransitions[booking.status] || [];
+
+        if (!allowedStatuses.includes(status)) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid booking status transition",
+                message: `Invalid status transition from ${booking.status} to ${status}`,
             });
         }
 
@@ -182,19 +232,22 @@ export const updateBookingStatus = async (req, res) => {
             updatedAt: new Date(),
         };
 
+        // Final amount is required when completing a booking
         if (status === "completed") {
             const amount = Number(finalAmount);
 
             if (!Number.isFinite(amount) || amount <= 0) {
                 return res.status(400).json({
                     success: false,
-                    message: "A final amount greater than zero is required",
+                    message: "A valid final amount greater than 0 is required",
                 });
             }
 
             updateData.finalAmount = amount;
+            updateData.completedAt = new Date();
         }
 
+        // Atomic ownership and status check
         const result = await db.collection("bookings").updateOne(
             {
                 _id: new ObjectId(bookingId),
@@ -206,21 +259,21 @@ export const updateBookingStatus = async (req, res) => {
             }
         );
 
-        if (result.modifiedCount === 0) {
+        if (result.matchedCount === 0) {
             return res.status(409).json({
                 success: false,
-                message: "Booking status could not be updated",
+                message: "Booking status has changed. Please refresh and try again",
             });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Booking status updated successfully",
         });
     } catch (error) {
         console.error("Update Booking Status Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Failed to update booking status",
         });
@@ -231,6 +284,7 @@ export const updateBookingStatus = async (req, res) => {
 export const cancelBooking = async (req, res) => {
     try {
         const db = getDB();
+
         const { bookingId } = req.params;
 
         if (!ObjectId.isValid(bookingId)) {
@@ -255,9 +309,9 @@ export const cancelBooking = async (req, res) => {
         );
 
         if (result.matchedCount === 0) {
-            return res.status(400).json({
+            return res.status(404).json({
                 success: false,
-                message: "Booking cannot be cancelled. It may not belong to you or is no longer pending.",
+                message: "Booking not found or cannot be cancelled",
             });
         }
 
