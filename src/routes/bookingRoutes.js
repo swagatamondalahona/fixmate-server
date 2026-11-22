@@ -6,6 +6,7 @@ import {
     getMyBookings,
     getTechnicianBookings,
     updateBookingStatus,
+    updateCompletedBookingAmount,
     cancelBooking,
 } from "../controllers/bookingController.js";
 
@@ -51,6 +52,14 @@ router.patch(
     verifyToken,
     verifyTechnician,
     updateBookingStatus
+);
+
+// Technician: Update Final Amount on Unpaid Completed Booking
+router.patch(
+    "/:bookingId/final-amount",
+    verifyToken,
+    verifyTechnician,
+    updateCompletedBookingAmount
 );
 
 export default router;

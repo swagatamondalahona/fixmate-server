@@ -13,6 +13,7 @@ import {
 
 import {
     getAllAdminBookings,
+    updateAdminBookingAmount,
 } from "../controllers/adminBookingController.js";
 
 import {
@@ -44,6 +45,7 @@ router.patch("/users/:userId/role", updateUserRole);
 
 // Admin: Manage Bookings
 router.get("/bookings", getAllAdminBookings);
+router.patch("/bookings/:bookingId/final-amount", updateAdminBookingAmount);
 
 // Admin: Manage Transactions
 router.get("/transactions", getAllAdminTransactions);

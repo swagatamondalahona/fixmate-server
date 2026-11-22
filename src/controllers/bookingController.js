@@ -2,6 +2,8 @@
 import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 
+const MIN_FINAL_AMOUNT_BDT = 100;
+
 // Customer: Create Booking
 export const createBooking = async (req, res) => {
     try {
@@ -236,10 +238,10 @@ export const updateBookingStatus = async (req, res) => {
         if (status === "completed") {
             const amount = Number(finalAmount);
 
-            if (!Number.isFinite(amount) || amount <= 0) {
+            if (!Number.isFinite(amount) || amount < MIN_FINAL_AMOUNT_BDT) {
                 return res.status(400).json({
                     success: false,
-                    message: "A valid final amount greater than 0 is required",
+                    message: `Final amount must be at least ৳${MIN_FINAL_AMOUNT_BDT} (Stripe minimum online payment requirement)`,
                 });
             }
 
@@ -276,6 +278,64 @@ export const updateBookingStatus = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to update booking status",
+        });
+    }
+};
+
+// Technician: Update Final Amount on Unpaid Completed Booking
+export const updateCompletedBookingAmount = async (req, res) => {
+    try {
+        const db = getDB();
+        const { bookingId } = req.params;
+        const amount = Number(req.body?.finalAmount);
+
+        if (!ObjectId.isValid(bookingId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid booking ID",
+            });
+        }
+
+        if (!Number.isFinite(amount) || amount < MIN_FINAL_AMOUNT_BDT) {
+            return res.status(400).json({
+                success: false,
+                message: `Final amount must be at least ৳${MIN_FINAL_AMOUNT_BDT} (Stripe minimum online payment requirement)`,
+            });
+        }
+
+        const result = await db.collection("bookings").updateOne(
+            {
+                _id: new ObjectId(bookingId),
+                technicianId: req.user.id,
+                status: "completed",
+                paymentStatus: { $nin: ["paid", "completed"] },
+            },
+            {
+                $set: {
+                    finalAmount: amount,
+                    updatedAt: new Date(),
+                },
+            }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Unpaid completed booking not found or access denied",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Final amount updated successfully",
+            data: { finalAmount: amount },
+        });
+    } catch (error) {
+        console.error("Update Final Amount Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update final amount",
         });
     }
 };

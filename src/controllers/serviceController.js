@@ -2,6 +2,8 @@
 import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 
+const MIN_SERVICE_PRICE_BDT = 100;
+
 // Helper: Find technician by ID or email
 const findTechnician = async (db, service) => {
     const conditions = [];
@@ -229,6 +231,13 @@ export const createService = async (req, res) => {
             });
         }
 
+        if (Number(basePrice) < MIN_SERVICE_PRICE_BDT) {
+            return res.status(400).json({
+                success: false,
+                message: `Base price must be at least ৳${MIN_SERVICE_PRICE_BDT}`,
+            });
+        }
+
         if (!req.user?.id) {
             return res.status(401).json({
                 success: false,
@@ -394,6 +403,13 @@ export const updateService = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Please provide all required service information",
+            });
+        }
+
+        if (Number(basePrice) < MIN_SERVICE_PRICE_BDT) {
+            return res.status(400).json({
+                success: false,
+                message: `Base price must be at least ৳${MIN_SERVICE_PRICE_BDT}`,
             });
         }
 

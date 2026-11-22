@@ -3,6 +3,9 @@ import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+const MIN_STRIPE_BDT_AMOUNT = 70;
+const MIN_RECOMMENDED_BDT_AMOUNT = 100;
+
 // Validate Stripe session amount and currency
 const validateSessionAmount = (session, booking) => {
     const expectedAmount = Math.round(
@@ -160,6 +163,13 @@ export const createCheckoutSession = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Invalid booking amount",
+            });
+        }
+
+        if (amount < MIN_STRIPE_BDT_AMOUNT) {
+            return res.status(400).json({
+                success: false,
+                message: `Minimum online payment amount is ৳${MIN_RECOMMENDED_BDT_AMOUNT} (Stripe requires at least $0.50 USD). Please ask the technician or admin to update the final amount.`,
             });
         }
 
