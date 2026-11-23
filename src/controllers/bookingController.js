@@ -2,7 +2,7 @@
 import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 
-const MIN_FINAL_AMOUNT_BDT = 100;
+const MIN_FINAL_AMOUNT_USD = 0.5;
 
 // Customer: Create Booking
 export const createBooking = async (req, res) => {
@@ -238,10 +238,10 @@ export const updateBookingStatus = async (req, res) => {
         if (status === "completed") {
             const amount = Number(finalAmount);
 
-            if (!Number.isFinite(amount) || amount < MIN_FINAL_AMOUNT_BDT) {
+            if (!Number.isFinite(amount) || amount < MIN_FINAL_AMOUNT_USD) {
                 return res.status(400).json({
                     success: false,
-                    message: `Final amount must be at least ৳${MIN_FINAL_AMOUNT_BDT} (Stripe minimum online payment requirement)`,
+                    message: `Final amount must be at least $${MIN_FINAL_AMOUNT_USD.toFixed(2)} USD (Stripe minimum online payment requirement)`,
                 });
             }
 
@@ -296,10 +296,10 @@ export const updateCompletedBookingAmount = async (req, res) => {
             });
         }
 
-        if (!Number.isFinite(amount) || amount < MIN_FINAL_AMOUNT_BDT) {
+        if (!Number.isFinite(amount) || amount < MIN_FINAL_AMOUNT_USD) {
             return res.status(400).json({
                 success: false,
-                message: `Final amount must be at least ৳${MIN_FINAL_AMOUNT_BDT} (Stripe minimum online payment requirement)`,
+                message: `Final amount must be at least $${MIN_FINAL_AMOUNT_USD.toFixed(2)} USD (Stripe minimum online payment requirement)`,
             });
         }
 

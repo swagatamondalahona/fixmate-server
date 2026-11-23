@@ -3,8 +3,8 @@ import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const MIN_STRIPE_BDT_AMOUNT = 70;
-const MIN_RECOMMENDED_BDT_AMOUNT = 100;
+const STRIPE_CURRENCY = "usd";
+const MIN_STRIPE_USD_AMOUNT = 0.5;
 
 // Validate Stripe session amount and currency
 const validateSessionAmount = (session, booking) => {
@@ -16,7 +16,7 @@ const validateSessionAmount = (session, booking) => {
         Number.isFinite(expectedAmount) &&
         expectedAmount > 0 &&
         session.amount_total === expectedAmount &&
-        session.currency === "bdt"
+        session.currency === STRIPE_CURRENCY
     );
 };
 
@@ -166,10 +166,10 @@ export const createCheckoutSession = async (req, res) => {
             });
         }
 
-        if (amount < MIN_STRIPE_BDT_AMOUNT) {
+        if (amount < MIN_STRIPE_USD_AMOUNT) {
             return res.status(400).json({
                 success: false,
-                message: `Minimum online payment amount is ৳${MIN_RECOMMENDED_BDT_AMOUNT} (Stripe requires at least $0.50 USD). Please ask the technician or admin to update the final amount.`,
+                message: `Minimum online payment amount is $${MIN_STRIPE_USD_AMOUNT.toFixed(2)} USD. Please ask the technician or admin to update the final amount.`,
             });
         }
 
@@ -193,7 +193,7 @@ export const createCheckoutSession = async (req, res) => {
 
         formData.append(
             "line_items[0][price_data][currency]",
-            "bdt"
+            STRIPE_CURRENCY
         );
         formData.append(
             "line_items[0][price_data][product_data][name]",
