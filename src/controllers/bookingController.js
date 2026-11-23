@@ -4,36 +4,77 @@ import { ObjectId } from "mongodb";
 
 const MIN_FINAL_AMOUNT_USD = 0.5;
 
+const findUserDoc = async (db, id, email) => {
+    const conditions = [];
+
+    if (id) {
+        conditions.push({ _id: id }, { id });
+        if (ObjectId.isValid(id)) {
+            conditions.push({ _id: new ObjectId(id) });
+        }
+    }
+
+    if (email) {
+        conditions.push({ email });
+    }
+
+    if (conditions.length === 0) return null;
+
+    return db.collection("users").findOne({ $or: conditions });
+};
+
 // Customer: Create Booking
 export const createBooking = async (req, res) => {
     try {
         const db = getDB();
 
-        const { serviceId, bookingDate, address, notes } = req.body;
+        const {
+            serviceId,
+            bookingDate,
+            preferredDate,
+            address,
+            customerPhone,
+            problemDescription,
+            notes,
+        } = req.body;
+
+        const rawDate = preferredDate || bookingDate;
+        const description = (problemDescription ?? notes ?? "").trim();
+        const phone = typeof customerPhone === "string" ? customerPhone.trim() : "";
 
         // Validate required fields
         if (
             !serviceId ||
             !ObjectId.isValid(serviceId) ||
-            !bookingDate ||
-            !address?.trim()
+            !rawDate ||
+            !address?.trim() ||
+            !phone
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Service, booking date and address are required",
+                message: "Service, phone number, preferred date, and address are required",
             });
         }
 
-        // Validate future booking date
-        const selectedDate = new Date(bookingDate);
+        if (description.length < 20) {
+            return res.status(400).json({
+                success: false,
+                message: "Problem description must be at least 20 characters",
+            });
+        }
+
+        // Validate today or future booking date
+        const selectedDate = new Date(rawDate);
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
 
         if (
             Number.isNaN(selectedDate.getTime()) ||
-            selectedDate <= new Date()
+            selectedDate < startOfToday
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Please select a valid future booking date",
+                message: "Please select today or a future date",
             });
         }
 
@@ -80,25 +121,41 @@ export const createBooking = async (req, res) => {
         if (existingBooking) {
             return res.status(409).json({
                 success: false,
-                message: "You already have an active booking for this service",
+                message: "You already have an active request for this service",
             });
         }
+
+        const [customerDoc, technicianDoc] = await Promise.all([
+            findUserDoc(db, req.user.id, req.user.email),
+            service.technicianName
+                ? Promise.resolve(null)
+                : findUserDoc(db, service.technicianId, service.technicianEmail),
+        ]);
 
         // Create booking
         const booking = {
             serviceId: service._id,
             serviceTitle: service.title,
             serviceImage: service.image || "",
+            category: service.category || "",
 
             technicianId: service.technicianId,
+            technicianName:
+                service.technicianName?.trim() ||
+                technicianDoc?.name?.trim() ||
+                "Verified Technician",
             technicianEmail: service.technicianEmail || "",
 
             customerId: req.user.id,
-            customerEmail: req.user.email || "",
+            customerName: customerDoc?.name?.trim() || "",
+            customerEmail: customerDoc?.email || req.user.email || "",
+            customerPhone: phone,
 
             bookingDate: selectedDate,
+            preferredDate: selectedDate,
             address: address.trim(),
-            notes: notes || "",
+            notes: description,
+            problemDescription: description,
 
             basePrice: service.basePrice,
             finalAmount: null,

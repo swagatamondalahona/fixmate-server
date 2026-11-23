@@ -170,10 +170,10 @@ export const updateUserRole = async (req, res) => {
         const { userId } = req.params;
         const { role } = req.body;
 
-        if (!["customer", "technician"].includes(role)) {
+        if (!["customer", "technician", "admin"].includes(role)) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid role. Only customer or technician is allowed.",
+                message: "Invalid role. Allowed roles: customer, technician, admin.",
             });
         }
 
@@ -208,10 +208,17 @@ export const updateUserRole = async (req, res) => {
             });
         }
 
-        if (targetUser.role === "admin") {
+        const isSelf =
+            targetUser._id?.toString() === req.user.id ||
+            targetUser.id === req.user.id ||
+            (req.user.email &&
+                targetUser.email &&
+                targetUser.email.toLowerCase() === req.user.email.toLowerCase());
+
+        if (isSelf) {
             return res.status(403).json({
                 success: false,
-                message: "Admin role cannot be changed.",
+                message: "You cannot change your own role.",
             });
         }
 

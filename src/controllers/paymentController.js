@@ -114,13 +114,50 @@ const saveVerifiedPayment = async (db, session, booking, customerId) => {
         }
     }
 
+    let customerName = booking.customerName || "";
+    let technicianName = booking.technicianName || "";
+
+    if (!customerName && (booking.customerId || booking.customerEmail)) {
+        const customerConditions = [];
+        if (booking.customerId) {
+            customerConditions.push({ _id: booking.customerId }, { id: booking.customerId });
+            if (ObjectId.isValid(booking.customerId)) {
+                customerConditions.push({ _id: new ObjectId(booking.customerId) });
+            }
+        }
+        if (booking.customerEmail) {
+            customerConditions.push({ email: booking.customerEmail });
+        }
+        const customerDoc = customerConditions.length
+            ? await db.collection("users").findOne({ $or: customerConditions })
+            : null;
+        customerName = customerDoc?.name || "";
+    }
+
+    if (!technicianName && (booking.technicianId || booking.technicianEmail)) {
+        const techConditions = [];
+        if (booking.technicianId) {
+            techConditions.push({ _id: booking.technicianId }, { id: booking.technicianId });
+            if (ObjectId.isValid(booking.technicianId)) {
+                techConditions.push({ _id: new ObjectId(booking.technicianId) });
+            }
+        }
+        if (booking.technicianEmail) {
+            techConditions.push({ email: booking.technicianEmail });
+        }
+        const techDoc = techConditions.length
+            ? await db.collection("users").findOne({ $or: techConditions })
+            : null;
+        technicianName = techDoc?.name || "";
+    }
+
     const payment = {
         bookingId,
         customerId,
         serviceTitle: booking.serviceTitle || "FixMate Service",
-        customerName: booking.customerName || "",
+        customerName,
         customerEmail: booking.customerEmail || "",
-        technicianName: booking.technicianName || "",
+        technicianName,
         technicianEmail: booking.technicianEmail || "",
         transactionId:
             typeof session.payment_intent === "string"
@@ -220,7 +257,7 @@ export const createCheckoutSession = async (req, res) => {
         );
         formData.append(
             "cancel_url",
-            `${frontendURL}/dashboard/customer/bookings`
+            `${frontendURL}/payment/cancel`
         );
 
         formData.append(
@@ -239,6 +276,10 @@ export const createCheckoutSession = async (req, res) => {
 
         formData.append("metadata[bookingId]", booking._id.toString());
         formData.append("metadata[customerId]", req.user.id);
+        formData.append(
+            "metadata[customerEmail]",
+            req.user.email || booking.customerEmail || ""
+        );
 
         const stripeResponse = await fetch(
             "https://api.stripe.com/v1/checkout/sessions",
@@ -387,6 +428,8 @@ export const verifyCheckoutSession = async (req, res) => {
             success: true,
             message: "Payment verified successfully",
             data: {
+                bookingId: booking._id.toString(),
+                serviceTitle: payment.serviceTitle,
                 transactionId: payment.transactionId,
                 amount: payment.amount,
                 currency: payment.currency,
@@ -566,7 +609,7 @@ export const getMyPayments = async (req, res) => {
     try {
         const db = getDB();
 
-        const payments = await db
+        const rawPayments = await db
             .collection("payments")
             .find({
                 customerId: req.user.id,
@@ -574,6 +617,30 @@ export const getMyPayments = async (req, res) => {
             })
             .sort({ paidAt: -1 })
             .toArray();
+
+        const payments = await Promise.all(
+            rawPayments.map(async (payment) => {
+                if (payment.technicianName?.trim()) {
+                    return payment;
+                }
+
+                let techName = "";
+                if (payment.technicianEmail) {
+                    const techDoc = await db.collection("users").findOne({
+                        email: payment.technicianEmail,
+                    });
+                    techName = techDoc?.name?.trim() || "";
+                }
+
+                return {
+                    ...payment,
+                    technicianName:
+                        techName ||
+                        payment.technicianEmail ||
+                        "Verified Technician",
+                };
+            })
+        );
 
         const totalAmount = payments.reduce(
             (total, payment) =>

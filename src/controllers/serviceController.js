@@ -71,7 +71,15 @@ export const getAllServices = async (req, res) => {
         }
 
         if (mode?.trim() && mode !== "All Modes") {
-            query.serviceMode = mode.trim();
+            const trimmedMode = mode.trim();
+
+            if (trimmedMode === "Home Visit") {
+                query.serviceMode = { $in: ["Home Visit", "On-site"] };
+            } else if (trimmedMode === "Shop Drop-off") {
+                query.serviceMode = { $in: ["Shop Drop-off", "Remote"] };
+            } else {
+                query.serviceMode = trimmedMode;
+            }
         }
 
         let sortOption = { createdAt: -1 };
@@ -88,11 +96,25 @@ export const getAllServices = async (req, res) => {
             .sort(sortOption)
             .toArray();
 
+        const enrichedServices = await Promise.all(
+            services.map(async (service) => {
+                if (service.technicianName?.trim()) {
+                    return service;
+                }
+                const technician = await findTechnician(db, service);
+                return {
+                    ...service,
+                    technicianName:
+                        getTechnicianName(technician) || "Verified Technician",
+                };
+            })
+        );
+
         return res.status(200).json({
             success: true,
             message: "Services fetched successfully",
-            total: services.length,
-            data: services,
+            total: enrichedServices.length,
+            data: enrichedServices,
         });
     } catch (error) {
         console.error("Get all services error:", error);
@@ -141,6 +163,10 @@ export const getServiceById = async (req, res) => {
                     service.technicianName?.trim() ||
                     getTechnicianName(technician) ||
                     "Verified Technician",
+                technicianImage: technician?.image || "",
+                technicianArea:
+                    technician?.area?.trim() || service.serviceArea || "",
+                technicianBio: technician?.bio?.trim() || "",
             },
         });
     } catch (error) {
@@ -540,6 +566,76 @@ export const deleteService = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to delete service",
+        });
+    }
+};
+
+// Technician: Toggle Own Service Availability
+export const toggleServiceAvailability = async (req, res) => {
+    try {
+        const db = getDB();
+        const { serviceId } = req.params;
+
+        if (!ObjectId.isValid(serviceId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid service ID",
+            });
+        }
+
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        const service = await db.collection("services").findOne({
+            _id: new ObjectId(serviceId),
+            technicianId: req.user.id,
+        });
+
+        if (!service) {
+            return res.status(404).json({
+                success: false,
+                message: "Service not found or you do not have permission",
+            });
+        }
+
+        const nextAvailability =
+            typeof req.body?.isAvailable === "boolean"
+                ? req.body.isAvailable
+                : !service.isAvailable;
+
+        await db.collection("services").updateOne(
+            {
+                _id: new ObjectId(serviceId),
+                technicianId: req.user.id,
+            },
+            {
+                $set: {
+                    isAvailable: nextAvailability,
+                    updatedAt: new Date(),
+                },
+            }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: nextAvailability
+                ? "Service is now available to customers"
+                : "Service hidden from public listings",
+            data: {
+                _id: service._id,
+                isAvailable: nextAvailability,
+            },
+        });
+    } catch (error) {
+        console.error("Toggle service availability error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update service availability",
         });
     }
 };

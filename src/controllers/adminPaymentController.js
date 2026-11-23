@@ -21,14 +21,24 @@ export const getAllAdminTransactions = async (req, res) => {
                 return {
                     ...payment,
                     bookingId: payment.bookingId?.toString() || "",
-                    serviceTitle: booking?.serviceTitle || "N/A",
-                    customerEmail: booking?.customerEmail || "N/A",
-                    technicianEmail: booking?.technicianEmail || "N/A",
+                    serviceTitle:
+                        payment.serviceTitle || booking?.serviceTitle || "N/A",
+                    customerName:
+                        payment.customerName || booking?.customerName || "",
+                    customerEmail:
+                        payment.customerEmail || booking?.customerEmail || "N/A",
+                    technicianName:
+                        payment.technicianName || booking?.technicianName || "",
+                    technicianEmail:
+                        payment.technicianEmail ||
+                        booking?.technicianEmail ||
+                        "N/A",
                     transactionId:
+                        payment.transactionId ||
                         payment.stripePaymentIntent ||
                         payment.stripeSessionId ||
                         "N/A",
-                    paymentStatus: payment.status || "paid",
+                    paymentStatus: payment.paymentStatus || payment.status || "paid",
                 };
             })
         );

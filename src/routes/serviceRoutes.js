@@ -9,6 +9,7 @@ import {
     getMyServices,
     updateService,
     deleteService,
+    toggleServiceAvailability,
 } from "../controllers/serviceController.js";
 
 import { verifyToken } from "../middlewares/verifyToken.js";
@@ -36,6 +37,14 @@ router.post(
     verifyToken,
     verifyTechnician,
     createService
+);
+
+// Technician: Toggle service availability
+router.patch(
+    "/:serviceId/availability",
+    verifyToken,
+    verifyTechnician,
+    toggleServiceAvailability
 );
 
 // Technician: Update own service
