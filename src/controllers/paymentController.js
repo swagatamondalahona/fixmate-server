@@ -5,6 +5,42 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const STRIPE_CURRENCY = "usd";
 const MIN_STRIPE_USD_AMOUNT = 0.5;
+const DEFAULT_PRODUCTION_FRONTEND_URL = "https://fixmate-gules-three.vercel.app";
+
+const normalizeOrigin = (value) => {
+    if (!value || typeof value !== "string") return "";
+
+    try {
+        return new URL(value.trim()).origin;
+    } catch {
+        return "";
+    }
+};
+
+const resolveFrontendURL = (req) => {
+    const configuredOrigins = [
+        process.env.FRONTEND_URL,
+        process.env.BETTER_AUTH_URL,
+        process.env.CLIENT_URL,
+        process.env.NEXT_PUBLIC_APP_URL,
+        DEFAULT_PRODUCTION_FRONTEND_URL,
+    ]
+        .map(normalizeOrigin)
+        .filter(Boolean);
+
+    const allowedOrigins = new Set([
+        ...configuredOrigins,
+        "http://localhost:3000",
+    ]);
+
+    const requestOrigin = normalizeOrigin(req.headers?.origin);
+
+    if (requestOrigin && allowedOrigins.has(requestOrigin)) {
+        return requestOrigin;
+    }
+
+    return configuredOrigins[0] || DEFAULT_PRODUCTION_FRONTEND_URL;
+};
 
 // Validate Stripe session amount and currency
 const validateSessionAmount = (session, booking) => {
@@ -173,11 +209,7 @@ export const createCheckoutSession = async (req, res) => {
             });
         }
 
-        const frontendURL = (
-            process.env.CLIENT_URL ||
-            process.env.NEXT_PUBLIC_APP_URL ||
-            "http://localhost:3000"
-        ).replace(/\/+$/, "");
+        const frontendURL = resolveFrontendURL(req);
 
         const formData = new URLSearchParams();
 
